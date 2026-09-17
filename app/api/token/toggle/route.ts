@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findToken, getDatabase, logOperation, publicToken } from "@/lib/db";
+import { findToken, getDatabase, logOperation } from "@/lib/db";
 import { setV2InboundEnabled } from "@/lib/xui-v2";
 import { refreshToken } from "@/lib/sync";
 

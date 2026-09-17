@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findToken, publicToken } from "@/lib/db";
+import { findToken } from "@/lib/db";
 import { refreshToken } from "@/lib/sync";
 
 export const runtime = "nodejs";
