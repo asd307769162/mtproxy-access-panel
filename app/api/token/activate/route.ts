@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { findToken, getDatabase, logOperation, publicToken } from "@/lib/db";
+import { findToken, getDatabase, getSetting, logOperation } from "@/lib/db";
 import { createV2Inbound, listV2Inbounds } from "@/lib/xui-v2";
 import { refreshToken } from "@/lib/sync";
 
@@ -12,6 +12,9 @@ export async function POST(request: NextRequest) {
   const record = findToken(value);
   if (!record) return NextResponse.json({ error: "Token无效" }, { status: 404 });
   if (record.status !== "available") return NextResponse.json(await refreshToken(record));
+  if (!getSetting("mtproxy_secret")) {
+    return NextResponse.json({ error: "管理员尚未配置 MTProxy 密钥，请稍后再试" }, { status: 503 });
+  }
 
   const db = getDatabase();
   const claimed = db.prepare("UPDATE access_tokens SET status='provisioning',last_error=NULL WHERE id=? AND status='available'").run(record.id);
