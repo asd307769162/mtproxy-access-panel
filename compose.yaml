@@ -1,0 +1,30 @@
+services:
+  panel:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "8790"
+      HOSTNAME: "0.0.0.0"
+      DATABASE_PATH: /data/mtproxy-panel.db
+    ports:
+      - "8790:8790"
+    volumes:
+      - panel-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  enforcer:
+    image: curlimages/curl:8.16.0
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      panel:
+        condition: service_healthy
+    command: ["sh", "-c", "while true; do curl -fsS -X POST -H 'Authorization: Bearer '$$CRON_SECRET http://panel:8790/api/internal/enforce >/dev/null || true; sleep 15; done"]
+
+volumes:
+  panel-data:
