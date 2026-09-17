@@ -32,6 +32,7 @@ yarn-error.log*
 .env*
 !.env.example
 .data/
+.ssh*/
 .openai/
 .sites-runtime/
 build/
