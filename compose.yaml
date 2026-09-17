@@ -11,6 +11,9 @@ services:
       - "8790:8790"
     volumes:
       - panel-data:/data
+    networks:
+      - default
+      - controller
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
@@ -28,3 +31,8 @@ services:
 
 volumes:
   panel-data:
+
+networks:
+  controller:
+    external: true
+    name: ${CONTROLLER_DOCKER_NETWORK:-xui-network-console_default}
