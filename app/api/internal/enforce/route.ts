@@ -10,6 +10,6 @@ export async function POST(request: NextRequest) {
   if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) return NextResponse.json({ error: "禁止访问" }, { status: 403 });
   const rows = getDatabase().prepare("SELECT * FROM access_tokens WHERE status IN ('active','paused') ORDER BY id").all() as AccessTokenRecord[];
   let checked = 0;
-  for (const row of rows) { await refreshToken(row); checked += 1; }
+  for (const row of rows) { await refreshToken(row, { includeIps: false }); checked += 1; }
   return NextResponse.json({ checked });
 }

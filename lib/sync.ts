@@ -3,7 +3,8 @@ import { listV2Inbounds, setV2InboundEnabled } from "@/lib/xui-v2";
 
 type PublicIp = { ip: string; location?: string; firstSeen?: string; lastSeen?: string; online?: boolean; connections?: number; scanner?: boolean };
 
-export async function refreshToken(record: AccessTokenRecord) {
+export async function refreshToken(record: AccessTokenRecord, options: { includeIps?: boolean } = {}) {
+  const includeIps = options.includeIps ?? true;
   if (!record.inbound_id || !record.proxy_port) return { ...publicToken(record), ips: [] as PublicIp[] };
   const proxyPort = record.proxy_port;
   try {
@@ -23,7 +24,7 @@ export async function refreshToken(record: AccessTokenRecord) {
   } catch {
     // A temporary X-UI failure must not erase the last valid customer state.
   }
-  return { ...publicToken(record), ips: await readControllerIps(proxyPort) };
+  return { ...publicToken(record), ips: includeIps ? await readControllerIps(proxyPort) : [] };
 }
 
 async function readControllerIps(port: number) {

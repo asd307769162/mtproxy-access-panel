@@ -27,7 +27,7 @@ services:
     depends_on:
       panel:
         condition: service_healthy
-    command: ["sh", "-c", "while true; do curl -fsS -X POST -H 'Authorization: Bearer '$$CRON_SECRET http://panel:8790/api/internal/enforce >/dev/null || true; sleep 15; done"]
+    command: ["sh", "-c", "while true; do curl -fsS -X POST -H 'Authorization: Bearer '$$CRON_SECRET http://panel:8790/api/internal/enforce >/dev/null || true; sleep 60; done"]
 
 volumes:
   panel-data:
