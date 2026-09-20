@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-session";
-import { getDatabase, type AccessTokenRecord } from "@/lib/db";
-import { listV2Inbounds, setV2InboundEnabled } from "@/lib/xui-v2";
+import { getDatabase, getServerForToken, type AccessTokenRecord } from "@/lib/db";
+import { listInbounds, setInboundEnabled } from "@/lib/xui";
 
 export const runtime = "nodejs";
 const GIB = 1024 ** 3;
@@ -52,10 +52,12 @@ export async function DELETE(request: NextRequest) {
 
   try {
     if (record.inbound_id) {
-      await setV2InboundEnabled(record.inbound_id, false);
-      const { inbounds } = await listV2Inbounds();
+      const server = getServerForToken(record);
+      if (!server) throw new Error("找不到该Token对应的X-UI服务器");
+      await setInboundEnabled(server, record.inbound_id, false);
+      const { inbounds } = await listInbounds(server);
       const inbound = inbounds.find((item) => item.id === record.inbound_id);
-      if (!inbound || inbound.enable) throw new Error("V2端口关闭结果未确认");
+      if (!inbound || inbound.enable) throw new Error(`${server.alias}端口关闭结果未确认`);
     }
 
     db.exec("BEGIN IMMEDIATE");
