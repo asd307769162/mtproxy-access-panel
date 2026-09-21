@@ -29,8 +29,27 @@ export default function Home() {
   }
 
   async function copy(value: string) {
-    await navigator.clipboard.writeText(value);
-    setMessage("已复制");
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("copy command failed");
+      }
+      setMessage("复制成功");
+    } catch {
+      setMessage("复制失败，请长按或选中文字手动复制");
+    }
   }
 
   const tgLink = info?.serverIp && info.proxyPort && info.secret
@@ -82,9 +101,9 @@ function Activation({ info, busy, message, onActivate }: { info: ProxyInfo; busy
 function Dashboard({ info, busy, message, tgLink, onCopy, onToggle }: { info: ProxyInfo; busy: boolean; message: string; tgLink: string; onCopy: (value: string) => void; onToggle: (enabled: boolean) => void }) {
   const active = info.status === "active";
   const remaining = Math.max(0, info.quotaBytes - info.usedBytes);
-  return <div className="space-y-5"><div className="flex flex-col justify-between gap-4 rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6 sm:flex-row sm:items-center"><div><p className="text-sm text-slate-500">代理状态</p><h1 className="mt-1 text-3xl font-semibold text-white">{statusLabel(info.status)}</h1></div>{["active", "paused"].includes(info.status) && <button disabled={busy} onClick={() => onToggle(!active)} className={`flex h-12 items-center justify-center gap-2 rounded-xl px-5 font-medium ${active ? "border border-amber-300/20 bg-amber-300/8 text-amber-200" : "bg-emerald-400 text-emerald-950"}`}>{active ? <Pause size={18} /> : <Play size={18} />}{active ? "暂停使用" : "恢复使用"}</button>}</div>
-    <div className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]"><div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">代理信息</h2><div className="mt-5 space-y-3"><InfoRow label="代理IP" value={info.serverIp || "—"} onCopy={onCopy} /><InfoRow label="端口" value={String(info.proxyPort || "—")} onCopy={onCopy} /><InfoRow label="Secret" value={info.secret || "尚未设置"} onCopy={onCopy} secret /></div>{tgLink && <button onClick={() => onCopy(tgLink)} className="mt-5 h-12 w-full rounded-xl bg-cyan-400 font-semibold text-cyan-950">复制完整Telegram代理链接</button>}</div><div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">套餐用量</h2><p className="mt-5 text-3xl font-semibold">{formatBytes(remaining)}</p><p className="mt-1 text-sm text-slate-500">剩余流量</p><div className="mt-5 h-2 overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${Math.min(100, (info.usedBytes / info.quotaBytes) * 100)}%` }} /></div><div className="mt-4 flex justify-between text-sm text-slate-400"><span>已用 {formatBytes(info.usedBytes)}</span><span>共 {formatBytes(info.quotaBytes)}</span></div><p className="mt-5 text-sm text-slate-400">到期：{info.expiresAt ? new Date(info.expiresAt).toLocaleString("zh-CN") : "—"}</p></div></div>
-    <div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">最近24小时接入IP</h2>{info.ips?.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{info.ips.map((item) => <div key={item.ip} className="rounded-2xl border border-white/8 bg-[#07131f] p-4"><div className="flex items-center justify-between gap-3"><p className="font-mono text-white">{item.ip}</p><span className={`text-xs ${item.online ? "text-emerald-300" : "text-slate-600"}`}>{item.online ? "当前在线" : "24小时内"}</span></div><p className="mt-2 text-sm text-cyan-200">{item.location || "归属地查询中"}</p><p className="mt-2 text-xs leading-5 text-slate-500">首次 {formatTime(item.firstSeen)} · 最后 {formatTime(item.lastSeen)}</p></div>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-white/10 py-8 text-center text-sm text-slate-500">最近24小时暂无接入IP</p>}</div>{message && <Notice text={message} />}</div>;
+  return <div className="space-y-5"><div className="flex flex-col justify-between gap-4 rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6 sm:flex-row sm:items-center"><div><p className="text-sm text-slate-500">代理状态</p><h1 className="mt-1 text-3xl font-semibold text-white">{statusLabel(info.status)}</h1></div>{["active", "paused"].includes(info.status) && <button disabled={busy} onClick={() => onToggle(!active)} className={`flex h-12 items-center justify-center gap-2 rounded-xl px-5 font-medium ${active ? "border border-amber-300/20 bg-amber-300/8 text-amber-200" : "bg-emerald-400 text-emerald-950"}`}>{active ? <Pause size={18} /> : <Play size={18} />}{active ? "点此暂停使用" : "点此恢复使用"}</button>}</div>
+    <div className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]"><div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">代理信息</h2><div className="mt-5 space-y-3"><InfoRow label="代理IP" value={info.serverIp || "—"} onCopy={onCopy} /><InfoRow label="端口" value={String(info.proxyPort || "—")} onCopy={onCopy} /><InfoRow label="Secret" value={info.secret || "尚未设置"} onCopy={onCopy} secret /></div>{tgLink && <button onClick={() => onCopy(tgLink)} className="mt-5 h-12 w-full rounded-xl bg-cyan-400 font-semibold text-cyan-950">复制完整Telegram代理链接</button>}{message && <Notice text={message} />}</div><div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">套餐用量</h2><p className="mt-5 text-3xl font-semibold">{formatBytes(remaining)}</p><p className="mt-1 text-sm text-slate-500">剩余流量</p><div className="mt-5 h-2 overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${Math.min(100, (info.usedBytes / info.quotaBytes) * 100)}%` }} /></div><div className="mt-4 flex justify-between text-sm text-slate-400"><span>已用 {formatBytes(info.usedBytes)}</span><span>共 {formatBytes(info.quotaBytes)}</span></div><p className="mt-5 text-sm text-slate-400">到期：{info.expiresAt ? new Date(info.expiresAt).toLocaleString("zh-CN") : "—"}</p></div></div>
+    <div className="rounded-[24px] border border-white/10 bg-[#0c1927]/90 p-6"><h2 className="text-lg font-semibold">最近24小时接入IP</h2>{info.ips?.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{info.ips.map((item) => <div key={item.ip} className="rounded-2xl border border-white/8 bg-[#07131f] p-4"><div className="flex items-center justify-between gap-3"><p className="font-mono text-white">{item.ip}</p><span className={`text-xs ${item.online ? "text-emerald-300" : "text-slate-600"}`}>{item.online ? "当前在线" : "24小时内"}</span></div><p className="mt-2 text-sm text-cyan-200">{item.location || "归属地查询中"}</p><p className="mt-2 text-xs leading-5 text-slate-500">首次 {formatTime(item.firstSeen)} · 最后 {formatTime(item.lastSeen)}</p></div>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-white/10 py-8 text-center text-sm text-slate-500">最近24小时暂无接入IP</p>}</div></div>;
 }
 
 function InfoRow({ label, value, onCopy, secret = false }: { label: string; value: string; onCopy: (value: string) => void; secret?: boolean }) { return <div className="flex items-center justify-between gap-3 rounded-xl bg-[#07131f] px-4 py-3"><div className="min-w-0"><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 truncate font-mono text-sm text-white ${secret ? "tracking-wider" : ""}`}>{value}</p></div><button aria-label={`复制${label}`} onClick={() => onCopy(value)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-white/8 hover:text-cyan-300"><Copy size={16} /></button></div>; }
