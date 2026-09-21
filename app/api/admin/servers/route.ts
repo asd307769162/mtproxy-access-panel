@@ -32,7 +32,9 @@ function validate(input: ServerInput, existing?: XuiServerRecord) {
   if (!username || !password) throw new Error("X-UI账号和密码不能为空");
   if (!publicIp || !targetAddress) throw new Error("公网IP和转发目标地址不能为空");
   if (!Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) throw new Error("目标端口无效");
-  if (!/^[0-9a-f]{32,64}$/.test(mtproxySecret)) throw new Error("Secret必须是32到64位十六进制字符");
+  if (!mtproxySecret || mtproxySecret.length > 512 || mtproxySecret.length % 2 !== 0 || !/^[0-9a-f]+$/.test(mtproxySecret)) {
+    throw new Error("请输入完整的MTProxy Secret，仅支持偶数长度的十六进制字符（最多512位）");
+  }
   return { alias, baseUrl, username, password, publicIp, targetAddress, targetPort, mtproxySecret, enabled: input.enabled !== false };
 }
 
