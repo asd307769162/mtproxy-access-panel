@@ -8,6 +8,7 @@ export type AccessTokenRecord = {
   id: number;
   token: string;
   plan_days: number;
+  plan_months: number;
   quota_bytes: number;
   status: "available" | "provisioning" | "active" | "paused" | "expired" | "exhausted" | "revoked";
   created_at: number;
@@ -49,6 +50,7 @@ export function getDatabase() {
       id INTEGER PRIMARY KEY,
       token TEXT NOT NULL UNIQUE,
       plan_days INTEGER NOT NULL DEFAULT 30,
+      plan_months INTEGER NOT NULL DEFAULT 1,
       quota_bytes INTEGER NOT NULL DEFAULT 214748364800,
       status TEXT NOT NULL DEFAULT 'available',
       created_at INTEGER NOT NULL,
@@ -99,6 +101,9 @@ export function getDatabase() {
   if (!tokenColumns.some((column) => column.name === "server_id")) {
     database.exec("ALTER TABLE access_tokens ADD COLUMN server_id INTEGER");
   }
+  if (!tokenColumns.some((column) => column.name === "plan_months")) {
+    database.exec("ALTER TABLE access_tokens ADD COLUMN plan_months INTEGER NOT NULL DEFAULT 1");
+  }
   seedLegacyV2(database);
   return database;
 }
@@ -126,6 +131,7 @@ export function publicToken(record: AccessTokenRecord) {
   return {
     status: record.status,
     planDays: record.plan_days,
+    planMonths: record.plan_months,
     quotaBytes: record.quota_bytes,
     usedBytes: record.used_bytes,
     activatedAt: record.activated_at,

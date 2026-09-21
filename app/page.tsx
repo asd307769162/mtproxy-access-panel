@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, CircleGauge, Copy, KeyRound, LockKeyhole, Net
 
 type ProxyInfo = {
   status: "available" | "provisioning" | "active" | "paused" | "expired" | "exhausted" | "revoked";
-  planDays: number; quotaBytes: number; usedBytes: number; activatedAt: number | null; expiresAt: number | null;
+  planDays: number; planMonths: number; quotaBytes: number; usedBytes: number; activatedAt: number | null; expiresAt: number | null;
   serverIp: string | null; proxyPort: number | null; secret: string;
   ips?: Array<{ ip: string; location?: string; firstSeen?: string; lastSeen?: string; online?: boolean }>;
 };
@@ -56,7 +56,7 @@ export default function Home() {
                 <button disabled={busy} className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 font-semibold text-[#04101a] disabled:opacity-60">{busy ? "正在验证…" : "验证并继续"}<ArrowRight size={18} /></button>
               </form>
               {message && <Notice text={message} />}
-              <div className="mt-6 space-y-3 border-t border-white/8 pt-5 text-sm text-slate-400"><SafeLine text="首次启用后开始计算30天有效期" /><SafeLine text="到期或用完200GB后自动停止" /><SafeLine text="Token仅用于访问您自己的代理信息" /></div>
+              <div className="mt-6 space-y-3 border-t border-white/8 pt-5 text-sm text-slate-400"><SafeLine text="首次启用后按所购套餐计算自然月有效期" /><SafeLine text="到期或套餐流量用完后自动停止" /><SafeLine text="Token仅用于访问您自己的代理信息" /></div>
             </div>
           </div>
         </section>
@@ -72,11 +72,11 @@ export default function Home() {
 }
 
 function Intro() {
-  return <div className="max-w-xl"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/8 px-3 py-1.5 text-sm text-cyan-200"><ShieldCheck size={15} />一份卡密对应一个全新代理端口</div><h1 className="text-balance text-4xl font-semibold leading-[1.12] tracking-[-.035em] text-white sm:text-5xl lg:text-[3.55rem]">输入卡密，启用您的<span className="block bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">专属 MTProxy</span></h1><p className="mt-6 max-w-lg text-base leading-7 text-slate-400 sm:text-lg">启用后自动分配服务器和随机端口。您可以随时查看流量、到期时间及最近24小时接入IP，并自行暂停或恢复服务。</p><div className="mt-8 grid max-w-lg grid-cols-3 gap-3"><Metric icon={<CircleGauge size={17} />} value="200 GB" label="套餐流量" /><Metric icon={<Server size={17} />} value="30 天" label="有效期" /><Metric icon={<LockKeyhole size={17} />} value="2 台" label="设备限制" /></div></div>;
+  return <div className="max-w-xl"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/8 px-3 py-1.5 text-sm text-cyan-200"><ShieldCheck size={15} />一份卡密对应一个全新代理端口</div><h1 className="text-balance text-4xl font-semibold leading-[1.12] tracking-[-.035em] text-white sm:text-5xl lg:text-[3.55rem]">输入卡密，启用您的<span className="block bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">专属 MTProxy</span></h1><p className="mt-6 max-w-lg text-base leading-7 text-slate-400 sm:text-lg">启用后自动分配服务器和随机端口。您可以随时查看流量、到期时间及最近24小时接入IP，并自行暂停或恢复服务。</p><div className="mt-8 grid max-w-lg grid-cols-3 gap-3"><PlanCard name="月付" duration="1自然月" quota="200GB" /><PlanCard name="半年付" duration="6自然月" quota="1000GB" /><PlanCard name="年付" duration="12自然月" quota="2000GB" /></div><p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><LockKeyhole size={14} />所有套餐设备限制均为2台</p></div>;
 }
 
 function Activation({ info, busy, message, onActivate }: { info: ProxyInfo; busy: boolean; message: string; onActivate: () => void }) {
-  return <div className="mx-auto max-w-2xl rounded-[28px] border border-white/10 bg-[#0c1927]/90 p-6 sm:p-9"><p className="text-sm text-cyan-300">Token验证成功</p><h1 className="mt-2 text-3xl font-semibold">确认启用代理</h1><p className="mt-3 leading-7 text-slate-400">点击启用后将从V2服务器创建全新随机端口，有效期立即开始计算。此操作不可撤销，但启用后可以暂停和恢复。</p><div className="my-7 grid grid-cols-3 gap-3"><Metric icon={<CircleGauge size={17} />} value={formatBytes(info.quotaBytes)} label="总流量" /><Metric icon={<Server size={17} />} value={`${info.planDays} 天`} label="有效期" /><Metric icon={<LockKeyhole size={17} />} value="2 台" label="设备限制" /></div><button disabled={busy} onClick={onActivate} className="h-14 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 font-semibold text-[#04101a] disabled:opacity-60">{busy ? "正在创建端口…" : "立即启用"}</button>{message && <Notice text={message} />}</div>;
+  return <div className="mx-auto max-w-2xl rounded-[28px] border border-white/10 bg-[#0c1927]/90 p-6 sm:p-9"><p className="text-sm text-cyan-300">Token验证成功</p><h1 className="mt-2 text-3xl font-semibold">确认启用代理</h1><p className="mt-3 leading-7 text-slate-400">点击启用后将从可用服务器创建全新随机端口，有效期从此刻开始按自然月计算。此操作不可撤销，但启用后可以暂停和恢复。</p><div className="my-7 grid grid-cols-3 gap-3"><Metric icon={<CircleGauge size={17} />} value={formatBytes(info.quotaBytes)} label="总流量" /><Metric icon={<Server size={17} />} value={planDuration(info.planMonths)} label="有效期" /><Metric icon={<LockKeyhole size={17} />} value="2 台" label="设备限制" /></div><button disabled={busy} onClick={onActivate} className="h-14 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 font-semibold text-[#04101a] disabled:opacity-60">{busy ? "正在创建端口…" : "立即启用"}</button>{message && <Notice text={message} />}</div>;
 }
 
 function Dashboard({ info, busy, message, tgLink, onCopy, onToggle }: { info: ProxyInfo; busy: boolean; message: string; tgLink: string; onCopy: (value: string) => void; onToggle: (enabled: boolean) => void }) {
@@ -89,8 +89,10 @@ function Dashboard({ info, busy, message, tgLink, onCopy, onToggle }: { info: Pr
 
 function InfoRow({ label, value, onCopy, secret = false }: { label: string; value: string; onCopy: (value: string) => void; secret?: boolean }) { return <div className="flex items-center justify-between gap-3 rounded-xl bg-[#07131f] px-4 py-3"><div className="min-w-0"><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 truncate font-mono text-sm text-white ${secret ? "tracking-wider" : ""}`}>{value}</p></div><button aria-label={`复制${label}`} onClick={() => onCopy(value)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-white/8 hover:text-cyan-300"><Copy size={16} /></button></div>; }
 function Metric({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) { return <div className="rounded-2xl border border-white/8 bg-white/[.035] p-3.5"><div className="mb-3 text-cyan-300">{icon}</div><p className="text-base font-semibold text-white sm:text-lg">{value}</p><p className="mt-0.5 text-xs text-slate-500">{label}</p></div>; }
+function PlanCard({ name, duration, quota }: { name: string; duration: string; quota: string }) { return <div className="rounded-2xl border border-white/8 bg-white/[.035] p-3.5"><p className="text-sm font-semibold text-cyan-200">{name}</p><p className="mt-2 text-sm font-medium text-white">{quota}</p><p className="mt-0.5 text-xs text-slate-500">{duration}</p></div>; }
 function SafeLine({ text }: { text: string }) { return <div className="flex items-start gap-2.5"><CheckCircle2 className="mt-0.5 shrink-0 text-emerald-400" size={15} /><span>{text}</span></div>; }
 function Notice({ text }: { text: string }) { return <p aria-live="polite" className="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-300/6 px-4 py-3 text-sm text-cyan-100">{text}</p>; }
 function formatBytes(value: number) { return `${(value / 1024 ** 3).toFixed(value >= 10 * 1024 ** 3 ? 1 : 2)} GB`; }
 function statusLabel(status: ProxyInfo["status"]) { return ({ available: "等待启用", provisioning: "正在创建", active: "运行中", paused: "已暂停", expired: "已到期", exhausted: "流量已用完", revoked: "已停用" })[status]; }
 function formatTime(value?: string) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
+function planDuration(months: number) { return months === 6 ? "6 个自然月" : months === 12 ? "12 个自然月" : "1 个自然月"; }

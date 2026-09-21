@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { findToken, getDatabase, logOperation, selectServerForAllocation } from "@/lib/db";
 import { createInbound, listInbounds } from "@/lib/xui";
 import { refreshToken } from "@/lib/sync";
+import { addNaturalMonthsChina } from "@/lib/plans";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
     if (!port) throw new Error("暂时找不到可用端口");
     const now = Date.now();
-    const expiresAt = now + record.plan_days * 86400000;
+    const expiresAt = addNaturalMonthsChina(now, record.plan_months || 1);
     const inbound = await createInbound(server, port, expiresAt, record.quota_bytes);
     db.prepare(`UPDATE access_tokens SET status='active',activated_at=?,expires_at=?,server_id=?,server_alias=?,server_ip=?,inbound_id=?,proxy_port=?,used_bytes=0,last_error=NULL WHERE id=?`)
       .run(now, expiresAt, server.id, server.alias, server.public_ip, inbound.id, port, record.id);
