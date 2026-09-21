@@ -8,10 +8,17 @@ import { isPlanCode, PLANS, type PlanCode } from "@/lib/plans";
 export const runtime = "nodejs";
 const GIB = 1024 ** 3;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  const records = getDatabase().prepare("SELECT * FROM access_tokens ORDER BY id DESC LIMIT 500").all();
-  return NextResponse.json(records);
+  const requestedPage = Number(request.nextUrl.searchParams.get("page") || "1");
+  const requestedPageSize = Number(request.nextUrl.searchParams.get("pageSize") || "50");
+  const pageSize = Number.isInteger(requestedPageSize) ? Math.min(100, Math.max(1, requestedPageSize)) : 50;
+  const db = getDatabase();
+  const total = Number((db.prepare("SELECT COUNT(*) AS count FROM access_tokens").get() as { count: number }).count);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Number.isInteger(requestedPage) ? Math.min(totalPages, Math.max(1, requestedPage)) : 1;
+  const records = db.prepare("SELECT * FROM access_tokens ORDER BY id DESC LIMIT ? OFFSET ?").all(pageSize, (page - 1) * pageSize);
+  return NextResponse.json({ records, total, page, pageSize, totalPages });
 }
 
 export async function POST(request: NextRequest) {

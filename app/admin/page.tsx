@@ -18,6 +18,9 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [tokens, setTokens] = useState<TokenRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [generated, setGenerated] = useState<string[]>([]);
   const [count, setCount] = useState(10);
   const [plan, setPlan] = useState<PlanCode>("monthly");
@@ -35,16 +38,16 @@ export default function AdminPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [busyAction, setBusyAction] = useState<"generate" | "server" | "copy" | "">("");
 
-  async function load() {
-    const response = await fetch("/api/admin/tokens", { cache: "no-store" });
+  async function load(targetPage: number) {
+    const response = await fetch(`/api/admin/tokens?page=${targetPage}&pageSize=50`, { cache: "no-store" });
     if (!response.ok) return setLoggedIn(false);
-    const rows = await response.json() as TokenRow[];
-    setTokens(rows); setSelectedIds((current) => current.filter((id) => rows.some((row) => row.id === id))); setLoggedIn(true);
+    const data = await response.json() as { records: TokenRow[]; total: number; page: number; totalPages: number };
+    setTokens(data.records); setPage(data.page); setTotal(data.total); setTotalPages(data.totalPages); setSelectedIds((current) => current.filter((id) => data.records.some((row) => row.id === id))); setLoggedIn(true);
     const serverResponse = await fetch("/api/admin/servers", { cache: "no-store" });
     if (serverResponse.ok) setServers(await serverResponse.json() as ServerRow[]);
   }
   useEffect(() => {
-    const start = window.setTimeout(() => void load(), 0);
+    const start = window.setTimeout(() => void load(1), 0);
     return () => window.clearTimeout(start);
   }, []);
 
@@ -52,7 +55,7 @@ export default function AdminPage() {
     event.preventDefault();
     const response = await fetch("/api/admin/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) });
     if (!response.ok) return setMessage("管理员密码错误");
-    setPassword(""); setMessage(""); await load();
+    setPassword(""); setMessage(""); await load(1);
   }
 
   async function generate() {
@@ -62,7 +65,7 @@ export default function AdminPage() {
       const data = await response.json() as { tokens?: string[]; error?: string };
       if (!response.ok) return setGenerateFeedback(`生成失败：${data.error || "请稍后重试"}`);
       const nextTokens = data.tokens || [];
-      setGenerated(nextTokens); setGenerateFeedback(`生成成功：已创建 ${nextTokens.length} 个 Token`); await load();
+      setGenerated(nextTokens); setGenerateFeedback(`生成成功：已创建 ${nextTokens.length} 个 Token`); setSelectedIds([]); await load(1);
     } catch {
       setGenerateFeedback("生成失败：网络连接异常，请重试");
     } finally {
@@ -82,7 +85,7 @@ export default function AdminPage() {
       const data = await response.json() as { error?: string };
       if (!response.ok) return setServerFeedback(`保存失败：${data.error || "请稍后重试"}`);
       setServerFeedback(`保存成功：${serverForm.alias} 的配置和独立 Secret 已生效`);
-      setShowServerForm(false); setServerForm(emptyServer); await load();
+      setShowServerForm(false); setServerForm(emptyServer); await load(page);
     } catch {
       setServerFeedback("保存失败：网络连接异常，请重试");
     } finally {
@@ -102,7 +105,7 @@ export default function AdminPage() {
     const response = await fetch("/api/admin/servers", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: server.id }) });
     const data = await response.json() as { error?: string };
     setServerFeedback(response.ok ? `删除成功：${server.alias}` : `删除失败：${data.error || "请稍后重试"}`);
-    if (response.ok) await load();
+    if (response.ok) await load(page);
   }
 
   async function copyText(value: string) {
@@ -144,10 +147,9 @@ export default function AdminPage() {
       const response = await fetch("/api/admin/tokens", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: row.id }) });
       const data = await response.json() as { error?: string; portClosed?: boolean; port?: number | null };
       if (!response.ok) return setDeleteFeedback(`删除失败：${data.error || "请稍后重试"}`);
-      setTokens((current) => current.filter((item) => item.id !== row.id));
-      setSelectedIds((current) => current.filter((id) => id !== row.id));
       setGenerated((current) => current.filter((token) => token !== row.token));
       setDeleteFeedback(data.portClosed ? `删除成功：端口 ${data.port} 已确认关闭` : "删除成功：未启用 Token 已移除");
+      setSelectedIds([]); await load(tokens.length === 1 && page > 1 ? page - 1 : page);
     } catch {
       setDeleteFeedback("删除失败：网络连接异常，Token和端口均未改动");
     } finally {
@@ -174,11 +176,10 @@ export default function AdminPage() {
       if (!response.ok) return setDeleteFeedback(`批量删除失败：${data.error || "请稍后重试"}`);
       const deletedIds = data.deletedIds || [];
       const deletedTokens = new Set(selected.filter((row) => deletedIds.includes(row.id)).map((row) => row.token));
-      setTokens((current) => current.filter((row) => !deletedIds.includes(row.id)));
       setGenerated((current) => current.filter((token) => !deletedTokens.has(token)));
-      setSelectedIds((current) => current.filter((id) => !deletedIds.includes(id)));
       const failed = data.failures?.length || 0;
       setDeleteFeedback(failed === 0 ? `批量删除成功：已删除 ${deletedIds.length} 个 Token` : `批量删除完成：成功 ${deletedIds.length} 个，失败 ${failed} 个；失败项已保留`);
+      setSelectedIds([]); await load(deletedIds.length === tokens.length && page > 1 ? page - 1 : page);
     } catch {
       setDeleteFeedback("批量删除失败：网络连接异常，未确认删除结果，请刷新后查看");
     } finally {
@@ -186,10 +187,16 @@ export default function AdminPage() {
     }
   }
 
+  async function goToPage(targetPage: number) {
+    if (targetPage < 1 || targetPage > totalPages || targetPage === page) return;
+    setSelectedIds([]);
+    await load(targetPage);
+  }
+
   if (!loggedIn) return <main className="grid min-h-screen place-items-center bg-[#07111d] px-5 text-white"><form onSubmit={login} className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0c1927] p-7"><div className="mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-cyan-300/10 text-cyan-300"><ShieldCheck /></div><h1 className="text-2xl font-semibold">管理后台</h1><p className="mt-2 text-sm text-slate-500">请输入管理员密码</p><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-6 h-13 w-full rounded-xl border border-white/10 bg-[#07131f] px-4 outline-none focus:border-cyan-300/50" /><button className="mt-3 h-13 w-full rounded-xl bg-cyan-400 font-semibold text-cyan-950">登录</button>{message && <p className="mt-3 text-sm text-rose-300">{message}</p>}</form></main>;
 
   const exportText = generated.map((token) => `http://103.118.245.108:8790{NL}Token：${token}`).join("\n");
-  return <main className="min-h-screen bg-[#07111d] px-5 py-8 text-slate-100 sm:px-8"><div className="mx-auto max-w-6xl"><header className="mb-7 flex items-center justify-between"><div><p className="text-sm text-cyan-300">MTProxy Access</p><h1 className="text-3xl font-semibold">Token与套餐管理</h1></div><button onClick={load} className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 text-slate-400"><RefreshCw size={18} /></button></header>
+  return <main className="min-h-screen bg-[#07111d] px-5 py-8 text-slate-100 sm:px-8"><div className="mx-auto max-w-6xl"><header className="mb-7 flex items-center justify-between"><div><p className="text-sm text-cyan-300">MTProxy Access</p><h1 className="text-3xl font-semibold">Token与套餐管理</h1></div><button onClick={() => load(page)} className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 text-slate-400"><RefreshCw size={18} /></button></header>
     <section className="rounded-3xl border border-white/10 bg-[#0c1927] p-6"><h2 className="text-lg font-semibold">批量生成卡密</h2><p className="mt-1 text-sm text-slate-500">有效期按自然月计算，设备限制统一为2；激活时在已启用服务器之间轮询分配</p><div className="mt-5 grid gap-3 sm:grid-cols-3">{planOptions.map((option) => <button key={option.code} onClick={() => setPlan(option.code)} className={`rounded-xl border p-4 text-left transition ${plan === option.code ? "border-cyan-300/40 bg-cyan-300/10" : "border-white/8 bg-[#07131f] hover:border-white/15"}`}><strong className={plan === option.code ? "text-cyan-200" : "text-slate-200"}>{option.label}</strong><span className="mt-1 block text-xs text-slate-500">{option.detail}</span></button>)}</div><label className="mt-5 block text-sm text-slate-400">生成数量</label><div className="mt-2 flex gap-3"><input type="number" min="1" max="500" value={count} onChange={(e) => setCount(Number(e.target.value))} className="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-[#07131f] px-4" /><button disabled={busyAction === "generate"} onClick={generate} className="h-12 rounded-xl bg-cyan-400 px-8 font-semibold text-cyan-950 disabled:cursor-wait disabled:opacity-60">{busyAction === "generate" ? "正在生成…" : "生成Token"}</button></div>{generateFeedback && <p role="status" className={`mt-3 rounded-xl border px-4 py-3 text-sm ${generateFeedback.startsWith("生成成功") ? "border-emerald-300/20 bg-emerald-300/8 text-emerald-200" : "border-rose-300/20 bg-rose-300/8 text-rose-200"}`}>{generateFeedback}</p>}</section>
     <section className="mt-5 rounded-3xl border border-white/10 bg-[#0c1927] p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><Server size={19} className="text-cyan-300" />X-UI服务器与独立Secret</h2><p className="mt-1 text-sm text-slate-500">共 {servers.length} 台服务器，{servers.filter((server) => server.enabled).length} 台参与自动轮询分配</p></div><div className="flex flex-wrap gap-2"><button aria-expanded={serversExpanded} onClick={() => { setServersExpanded((value) => !value); if (serversExpanded) setShowServerForm(false); }} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 hover:border-cyan-300/30 hover:text-cyan-200">{serversExpanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}{serversExpanded ? "收起服务器" : "展开服务器"}</button>{serversExpanded && <button onClick={() => { setServerForm(emptyServer); setShowServerForm(true); setServerFeedback(""); }} className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 font-semibold text-cyan-950"><Plus size={17} />新增服务器</button>}</div></div>
       {serversExpanded && <>
@@ -200,7 +207,7 @@ export default function AdminPage() {
       </>}
     </section>
     {generated.length > 0 && <section className="mt-5 rounded-3xl border border-white/10 bg-[#0c1927] p-6"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">本次生成结果</h2><button disabled={busyAction === "copy"} onClick={copyExport} className="flex items-center gap-2 rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-3 py-2 text-sm text-cyan-300 disabled:opacity-60"><Copy size={16} />{busyAction === "copy" ? "正在复制…" : "复制独角数卡格式"}</button></div>{copyFeedback && <p role="status" className={`mt-3 text-sm ${copyFeedback.startsWith("复制成功") ? "text-emerald-300" : "text-rose-300"}`}>{copyFeedback}</p>}<textarea readOnly value={exportText} rows={Math.min(12, generated.length * 2)} className="mt-4 w-full rounded-xl border border-white/10 bg-[#07131f] p-4 font-mono text-sm text-slate-300" /></section>}
-    <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-[#0c1927]"><div className="border-b border-white/8 px-6 py-5"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">最近Token</h2>{selectedIds.length > 0 && <span className="rounded-lg bg-cyan-300/8 px-2.5 py-1 text-xs text-cyan-300">已选 {selectedIds.length} 个</span>}</div><div className="flex flex-wrap items-center gap-3">{deleteFeedback && <p role="status" className={`text-sm ${deleteFeedback.includes("成功") && !deleteFeedback.includes("失败") ? "text-emerald-300" : "text-amber-300"}`}>{deleteFeedback}</p>}{selectedIds.length > 0 && <button disabled={bulkDeleting || deletingId !== null} onClick={bulkDelete} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/8 px-4 py-2 text-sm text-rose-300 disabled:opacity-50"><Trash2 size={15} />{bulkDeleting ? "正在批量删除…" : `删除选中（${selectedIds.length}）`}</button>}</div></div></div><div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="text-slate-500"><tr><th className="w-12 px-6 py-3"><input aria-label="全选当前列表" type="checkbox" checked={tokens.length > 0 && selectedIds.length === tokens.length} ref={(input) => { if (input) input.indeterminate = selectedIds.length > 0 && selectedIds.length < tokens.length; }} onChange={(event) => setSelectedIds(event.target.checked ? tokens.map((row) => row.id) : [])} /></th><th>Token</th><th>状态</th><th>套餐</th><th>服务器/端口</th><th>创建时间</th><th className="pr-6 text-right">操作</th></tr></thead><tbody>{tokens.map((row) => <tr key={row.id} className={`border-t border-white/6 ${selectedIds.includes(row.id) ? "bg-cyan-300/[0.03]" : ""}`}><td className="px-6 py-3"><input aria-label={`选择Token ${row.token}`} type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} /></td><td className="font-mono text-xs text-slate-300">{row.token}</td><td>{row.status}</td><td>{row.plan_months === 6 ? "半年付" : row.plan_months === 12 ? "年付" : "月付"} / {(row.quota_bytes / 1024 ** 3).toFixed(0)}GB</td><td>{row.proxy_port ? `${row.server_alias || "?"} / ${row.proxy_port}` : "—"}</td><td>{new Date(row.created_at).toLocaleString("zh-CN")}</td><td className="pr-6 text-right"><button disabled={deletingId !== null || bulkDeleting} onClick={() => deleteToken(row)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/15 bg-rose-300/5 px-3 py-2 text-xs text-rose-300 hover:bg-rose-300/10 disabled:cursor-wait disabled:opacity-50"><Trash2 size={14} />{deletingId === row.id ? "正在删除…" : "删除"}</button></td></tr>)}</tbody></table></div></section>
+    <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-[#0c1927]"><div className="border-b border-white/8 px-6 py-5"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">全部Token</h2><span className="rounded-lg border border-white/8 px-2.5 py-1 text-xs text-slate-400">共 {total} 条</span>{selectedIds.length > 0 && <span className="rounded-lg bg-cyan-300/8 px-2.5 py-1 text-xs text-cyan-300">本页已选 {selectedIds.length} 个</span>}</div><div className="flex flex-wrap items-center gap-3">{deleteFeedback && <p role="status" className={`text-sm ${deleteFeedback.includes("成功") && !deleteFeedback.includes("失败") ? "text-emerald-300" : "text-amber-300"}`}>{deleteFeedback}</p>}{selectedIds.length > 0 && <button disabled={bulkDeleting || deletingId !== null} onClick={bulkDelete} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/8 px-4 py-2 text-sm text-rose-300 disabled:opacity-50"><Trash2 size={15} />{bulkDeleting ? "正在批量删除…" : `删除选中（${selectedIds.length}）`}</button>}</div></div></div><div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="text-slate-500"><tr><th className="w-12 px-6 py-3"><input aria-label="全选当前页" type="checkbox" checked={tokens.length > 0 && selectedIds.length === tokens.length} ref={(input) => { if (input) input.indeterminate = selectedIds.length > 0 && selectedIds.length < tokens.length; }} onChange={(event) => setSelectedIds(event.target.checked ? tokens.map((row) => row.id) : [])} /></th><th>Token</th><th>状态</th><th>套餐</th><th>服务器/端口</th><th>创建时间</th><th className="pr-6 text-right">操作</th></tr></thead><tbody>{tokens.map((row) => <tr key={row.id} className={`border-t border-white/6 ${selectedIds.includes(row.id) ? "bg-cyan-300/[0.03]" : ""}`}><td className="px-6 py-3"><input aria-label={`选择Token ${row.token}`} type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} /></td><td className="font-mono text-xs text-slate-300">{row.token}</td><td>{row.status}</td><td>{row.plan_months === 6 ? "半年付" : row.plan_months === 12 ? "年付" : "月付"} / {(row.quota_bytes / 1024 ** 3).toFixed(0)}GB</td><td>{row.proxy_port ? `${row.server_alias || "?"} / ${row.proxy_port}` : "—"}</td><td>{new Date(row.created_at).toLocaleString("zh-CN")}</td><td className="pr-6 text-right"><button disabled={deletingId !== null || bulkDeleting} onClick={() => deleteToken(row)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/15 bg-rose-300/5 px-3 py-2 text-xs text-rose-300 hover:bg-rose-300/10 disabled:cursor-wait disabled:opacity-50"><Trash2 size={14} />{deletingId === row.id ? "正在删除…" : "删除"}</button></td></tr>)}</tbody></table></div><div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 px-6 py-4 text-sm text-slate-400"><span>第 {page} / {totalPages} 页 · 每页 50 条</span><div className="flex gap-2"><button disabled={page <= 1} onClick={() => goToPage(page - 1)} className="rounded-lg border border-white/10 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-35">上一页</button><button disabled={page >= totalPages} onClick={() => goToPage(page + 1)} className="rounded-lg border border-white/10 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-35">下一页</button></div></div></section>
   </div></main>;
 }
 
