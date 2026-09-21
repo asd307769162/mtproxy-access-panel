@@ -23,12 +23,15 @@ export default function AdminPage() {
   const [copyFeedback, setCopyFeedback] = useState("");
   const [deleteFeedback, setDeleteFeedback] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [busyAction, setBusyAction] = useState<"generate" | "server" | "copy" | "">("");
 
   async function load() {
     const response = await fetch("/api/admin/tokens", { cache: "no-store" });
     if (!response.ok) return setLoggedIn(false);
-    setTokens(await response.json() as TokenRow[]); setLoggedIn(true);
+    const rows = await response.json() as TokenRow[];
+    setTokens(rows); setSelectedIds((current) => current.filter((id) => rows.some((row) => row.id === id))); setLoggedIn(true);
     const serverResponse = await fetch("/api/admin/servers", { cache: "no-store" });
     if (serverResponse.ok) setServers(await serverResponse.json() as ServerRow[]);
   }
@@ -134,12 +137,44 @@ export default function AdminPage() {
       const data = await response.json() as { error?: string; portClosed?: boolean; port?: number | null };
       if (!response.ok) return setDeleteFeedback(`删除失败：${data.error || "请稍后重试"}`);
       setTokens((current) => current.filter((item) => item.id !== row.id));
+      setSelectedIds((current) => current.filter((id) => id !== row.id));
       setGenerated((current) => current.filter((token) => token !== row.token));
       setDeleteFeedback(data.portClosed ? `删除成功：端口 ${data.port} 已确认关闭` : "删除成功：未启用 Token 已移除");
     } catch {
       setDeleteFeedback("删除失败：网络连接异常，Token和端口均未改动");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  }
+
+  async function bulkDelete() {
+    const selected = tokens.filter((row) => selectedIds.includes(row.id));
+    if (selected.length === 0) return;
+    const activeCount = selected.filter((row) => row.proxy_port).length;
+    const warning = activeCount > 0
+      ? `确定删除选中的 ${selected.length} 个 Token 吗？其中 ${activeCount} 个已启用端口会先在所属X-UI上关闭。此操作不可恢复。`
+      : `确定删除选中的 ${selected.length} 个未启用 Token 吗？此操作不可恢复。`;
+    if (!window.confirm(warning)) return;
+    setBulkDeleting(true); setDeleteFeedback("");
+    try {
+      const response = await fetch("/api/admin/tokens", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: selected.map((row) => row.id) }) });
+      const data = await response.json() as { error?: string; deletedIds?: number[]; failures?: { id: number; error?: string }[] };
+      if (!response.ok) return setDeleteFeedback(`批量删除失败：${data.error || "请稍后重试"}`);
+      const deletedIds = data.deletedIds || [];
+      const deletedTokens = new Set(selected.filter((row) => deletedIds.includes(row.id)).map((row) => row.token));
+      setTokens((current) => current.filter((row) => !deletedIds.includes(row.id)));
+      setGenerated((current) => current.filter((token) => !deletedTokens.has(token)));
+      setSelectedIds((current) => current.filter((id) => !deletedIds.includes(id)));
+      const failed = data.failures?.length || 0;
+      setDeleteFeedback(failed === 0 ? `批量删除成功：已删除 ${deletedIds.length} 个 Token` : `批量删除完成：成功 ${deletedIds.length} 个，失败 ${failed} 个；失败项已保留`);
+    } catch {
+      setDeleteFeedback("批量删除失败：网络连接异常，未确认删除结果，请刷新后查看");
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -155,7 +190,7 @@ export default function AdminPage() {
       {showServerForm && <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-[#07131f] p-5"><h3 className="font-semibold">{serverForm.id ? `编辑 ${serverForm.alias}` : "新增X-UI服务器"}</h3><div className="mt-4 grid gap-3 md:grid-cols-2"><Field label="别名（与控制台服务器别名一致）" value={serverForm.alias} onChange={(value) => setServerForm({ ...serverForm, alias: value })} placeholder="例如 wf3" /><Field label="X-UI面板地址" value={serverForm.baseUrl} onChange={(value) => setServerForm({ ...serverForm, baseUrl: value })} placeholder="http://服务器IP:面板端口" /><Field label="X-UI用户名" value={serverForm.username} onChange={(value) => setServerForm({ ...serverForm, username: value })} /><Field label={`X-UI密码${serverForm.id ? "（留空保持不变）" : ""}`} type="password" value={serverForm.password} onChange={(value) => setServerForm({ ...serverForm, password: value })} /><Field label="代理公网IP" value={serverForm.publicIp} onChange={(value) => setServerForm({ ...serverForm, publicIp: value })} /><Field label="转发目标地址" value={serverForm.targetAddress} onChange={(value) => setServerForm({ ...serverForm, targetAddress: value })} /><Field label="转发目标端口" type="number" value={String(serverForm.targetPort)} onChange={(value) => setServerForm({ ...serverForm, targetPort: Number(value) })} /><Field label="该服务器的MTProxy Secret" value={serverForm.mtproxySecret} onChange={(value) => setServerForm({ ...serverForm, mtproxySecret: value })} placeholder="32到64位十六进制字符" mono /><label className="flex items-center gap-3 rounded-xl border border-white/8 px-4 py-3 text-sm text-slate-300"><input type="checkbox" checked={serverForm.enabled} onChange={(e) => setServerForm({ ...serverForm, enabled: e.target.checked })} />参与新Token轮询分配</label></div><div className="mt-4 flex justify-end gap-3"><button onClick={() => setShowServerForm(false)} className="rounded-xl border border-white/10 px-5 py-2.5 text-slate-300">取消</button><button disabled={busyAction === "server"} onClick={saveServer} className="rounded-xl bg-cyan-400 px-5 py-2.5 font-semibold text-cyan-950 disabled:opacity-60">{busyAction === "server" ? "正在保存…" : "保存服务器"}</button></div></div>}
     </section>
     {generated.length > 0 && <section className="mt-5 rounded-3xl border border-white/10 bg-[#0c1927] p-6"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">本次生成结果</h2><button disabled={busyAction === "copy"} onClick={copyExport} className="flex items-center gap-2 rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-3 py-2 text-sm text-cyan-300 disabled:opacity-60"><Copy size={16} />{busyAction === "copy" ? "正在复制…" : "复制独角数卡格式"}</button></div>{copyFeedback && <p role="status" className={`mt-3 text-sm ${copyFeedback.startsWith("复制成功") ? "text-emerald-300" : "text-rose-300"}`}>{copyFeedback}</p>}<textarea readOnly value={exportText} rows={Math.min(12, generated.length * 2)} className="mt-4 w-full rounded-xl border border-white/10 bg-[#07131f] p-4 font-mono text-sm text-slate-300" /></section>}
-    <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-[#0c1927]"><div className="border-b border-white/8 px-6 py-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">最近Token</h2>{deleteFeedback && <p role="status" className={`text-sm ${deleteFeedback.startsWith("删除成功") ? "text-emerald-300" : "text-rose-300"}`}>{deleteFeedback}</p>}</div></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="text-slate-500"><tr><th className="px-6 py-3">Token</th><th>状态</th><th>套餐</th><th>服务器/端口</th><th>创建时间</th><th className="pr-6 text-right">操作</th></tr></thead><tbody>{tokens.map((row) => <tr key={row.id} className="border-t border-white/6"><td className="px-6 py-3 font-mono text-xs text-slate-300">{row.token}</td><td>{row.status}</td><td>{row.plan_days}天 / {(row.quota_bytes / 1024 ** 3).toFixed(0)}GB</td><td>{row.proxy_port ? `${row.server_alias || "?"} / ${row.proxy_port}` : "—"}</td><td>{new Date(row.created_at).toLocaleString("zh-CN")}</td><td className="pr-6 text-right"><button disabled={deletingId !== null} onClick={() => deleteToken(row)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/15 bg-rose-300/5 px-3 py-2 text-xs text-rose-300 hover:bg-rose-300/10 disabled:cursor-wait disabled:opacity-50"><Trash2 size={14} />{deletingId === row.id ? "正在删除…" : "删除"}</button></td></tr>)}</tbody></table></div></section>
+    <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-[#0c1927]"><div className="border-b border-white/8 px-6 py-5"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">最近Token</h2>{selectedIds.length > 0 && <span className="rounded-lg bg-cyan-300/8 px-2.5 py-1 text-xs text-cyan-300">已选 {selectedIds.length} 个</span>}</div><div className="flex flex-wrap items-center gap-3">{deleteFeedback && <p role="status" className={`text-sm ${deleteFeedback.includes("成功") && !deleteFeedback.includes("失败") ? "text-emerald-300" : "text-amber-300"}`}>{deleteFeedback}</p>}{selectedIds.length > 0 && <button disabled={bulkDeleting || deletingId !== null} onClick={bulkDelete} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-300/8 px-4 py-2 text-sm text-rose-300 disabled:opacity-50"><Trash2 size={15} />{bulkDeleting ? "正在批量删除…" : `删除选中（${selectedIds.length}）`}</button>}</div></div></div><div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-sm"><thead className="text-slate-500"><tr><th className="w-12 px-6 py-3"><input aria-label="全选当前列表" type="checkbox" checked={tokens.length > 0 && selectedIds.length === tokens.length} ref={(input) => { if (input) input.indeterminate = selectedIds.length > 0 && selectedIds.length < tokens.length; }} onChange={(event) => setSelectedIds(event.target.checked ? tokens.map((row) => row.id) : [])} /></th><th>Token</th><th>状态</th><th>套餐</th><th>服务器/端口</th><th>创建时间</th><th className="pr-6 text-right">操作</th></tr></thead><tbody>{tokens.map((row) => <tr key={row.id} className={`border-t border-white/6 ${selectedIds.includes(row.id) ? "bg-cyan-300/[0.03]" : ""}`}><td className="px-6 py-3"><input aria-label={`选择Token ${row.token}`} type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} /></td><td className="font-mono text-xs text-slate-300">{row.token}</td><td>{row.status}</td><td>{row.plan_days}天 / {(row.quota_bytes / 1024 ** 3).toFixed(0)}GB</td><td>{row.proxy_port ? `${row.server_alias || "?"} / ${row.proxy_port}` : "—"}</td><td>{new Date(row.created_at).toLocaleString("zh-CN")}</td><td className="pr-6 text-right"><button disabled={deletingId !== null || bulkDeleting} onClick={() => deleteToken(row)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/15 bg-rose-300/5 px-3 py-2 text-xs text-rose-300 hover:bg-rose-300/10 disabled:cursor-wait disabled:opacity-50"><Trash2 size={14} />{deletingId === row.id ? "正在删除…" : "删除"}</button></td></tr>)}</tbody></table></div></section>
   </div></main>;
 }
 

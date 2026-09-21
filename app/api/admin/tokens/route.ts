@@ -39,16 +39,33 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  const { id } = await request.json() as { id?: number };
-  if (!Number.isInteger(id) || Number(id) < 1) return NextResponse.json({ error: "Token编号无效" }, { status: 400 });
+  const { id, ids } = await request.json() as { id?: number; ids?: number[] };
+  const batch = Array.isArray(ids);
+  const requested = batch ? [...new Set(ids)] : [id];
+  if (requested.length < 1 || requested.length > 500 || requested.some((value) => !Number.isInteger(value) || Number(value) < 1)) {
+    return NextResponse.json({ error: "请选择1到500个有效Token" }, { status: 400 });
+  }
 
+  const results = [] as { id: number; success: boolean; portClosed?: boolean; port?: number | null; error?: string }[];
+  for (const tokenId of requested as number[]) results.push(await deleteToken(tokenId));
+  if (batch) {
+    const deletedIds = results.filter((item) => item.success).map((item) => item.id);
+    const failures = results.filter((item) => !item.success);
+    return NextResponse.json({ success: failures.length === 0, deletedIds, failures, results });
+  }
+  const result = results[0];
+  if (!result.success) return NextResponse.json({ error: result.error }, { status: result.error === "Token不存在或已删除" ? 404 : result.error?.includes("正在创建") || result.error?.includes("状态已变化") ? 409 : 502 });
+  return NextResponse.json(result);
+}
+
+async function deleteToken(id: number) {
   const db = getDatabase();
-  const record = db.prepare("SELECT * FROM access_tokens WHERE id=?").get(id!) as AccessTokenRecord | undefined;
-  if (!record) return NextResponse.json({ error: "Token不存在或已删除" }, { status: 404 });
-  if (record.status === "provisioning") return NextResponse.json({ error: "端口正在创建中，请稍后再删除" }, { status: 409 });
+  const record = db.prepare("SELECT * FROM access_tokens WHERE id=?").get(id) as AccessTokenRecord | undefined;
+  if (!record) return { id, success: false, error: "Token不存在或已删除" };
+  if (record.status === "provisioning") return { id, success: false, error: "端口正在创建中，请稍后再删除" };
 
   const claimed = db.prepare("UPDATE access_tokens SET status='revoked' WHERE id=? AND status=?").run(record.id, record.status);
-  if (claimed.changes !== 1) return NextResponse.json({ error: "Token状态已变化，请刷新后重试" }, { status: 409 });
+  if (claimed.changes !== 1) return { id, success: false, error: "Token状态已变化，请刷新后重试" };
 
   try {
     if (record.inbound_id) {
@@ -69,10 +86,11 @@ export async function DELETE(request: NextRequest) {
       db.exec("ROLLBACK");
       throw error;
     }
-    return NextResponse.json({ success: true, portClosed: Boolean(record.inbound_id), port: record.proxy_port });
+    return { id, success: true, portClosed: Boolean(record.inbound_id), port: record.proxy_port };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "删除失败，Token已保留";
     db.prepare("UPDATE access_tokens SET status=?,last_error=? WHERE id=? AND status='revoked'")
-      .run(record.status, error instanceof Error ? error.message : "删除失败", record.id);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "删除失败，Token已保留" }, { status: 502 });
+      .run(record.status, message, record.id);
+    return { id, success: false, error: message };
   }
 }
