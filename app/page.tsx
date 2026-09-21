@@ -17,10 +17,14 @@ export default function Home() {
   const [info, setInfo] = useState<ProxyInfo | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY)?.trim();
-    if (!savedToken) return;
+    if (!savedToken) {
+      queueMicrotask(() => setRestoring(false));
+      return;
+    }
     fetch("/api/token/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: savedToken }) })
       .then(async (response) => {
         const data = await response.json() as ProxyInfo & { error?: string };
@@ -31,7 +35,8 @@ export default function Home() {
         setToken(savedToken);
         setInfo(data);
       })
-      .catch((error) => setMessage(error instanceof Error ? error.message : "自动验证失败"));
+      .catch((error) => setMessage(error instanceof Error ? error.message : "自动验证失败"))
+      .finally(() => setRestoring(false));
   }, []);
 
   async function request(path: string, body: object, rememberToken?: string) {
@@ -82,7 +87,9 @@ export default function Home() {
         <div className="flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/8 px-3 py-1.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />服务正常</div>
       </header>
 
-      {!info ? (
+      {restoring ? (
+        <section className="relative z-10 mx-auto flex min-h-[55vh] w-full max-w-6xl items-center justify-center px-5 pb-16 sm:px-8"><div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0c1927]/90 px-5 py-4 text-sm text-slate-300"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-300" />正在恢复代理信息…</div></section>
+      ) : !info ? (
         <section className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-10 px-5 pb-14 pt-8 sm:px-8 lg:grid-cols-[1.05fr_.95fr] lg:gap-16 lg:pb-20 lg:pt-16">
           <Intro />
           <div className="relative"><div className="absolute -inset-5 rounded-[34px] bg-gradient-to-br from-cyan-400/10 via-transparent to-blue-500/10 blur-xl" />
