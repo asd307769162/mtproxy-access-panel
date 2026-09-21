@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, CircleGauge, Copy, KeyRound, LockKeyhole, Network, Pause, Play, Server, ShieldCheck } from "lucide-react";
 
 type ProxyInfo = {
@@ -10,18 +10,37 @@ type ProxyInfo = {
   ips?: Array<{ ip: string; location?: string; firstSeen?: string; lastSeen?: string; online?: boolean }>;
 };
 
+const TOKEN_STORAGE_KEY = "mtproxy-access-token";
+
 export default function Home() {
   const [token, setToken] = useState("");
   const [info, setInfo] = useState<ProxyInfo | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function request(path: string, body: object) {
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY)?.trim();
+    if (!savedToken) return;
+    fetch("/api/token/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: savedToken }) })
+      .then(async (response) => {
+        const data = await response.json() as ProxyInfo & { error?: string };
+        if (!response.ok) {
+          if (response.status === 404) window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+          throw new Error(data.error || "自动验证失败");
+        }
+        setToken(savedToken);
+        setInfo(data);
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : "自动验证失败"));
+  }, []);
+
+  async function request(path: string, body: object, rememberToken?: string) {
     setBusy(true); setMessage("");
     try {
       const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = await response.json() as ProxyInfo & { error?: string };
       if (!response.ok) throw new Error(data.error || "操作失败");
+      if (rememberToken?.trim()) window.localStorage.setItem(TOKEN_STORAGE_KEY, rememberToken.trim());
       setInfo(data);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "操作失败");
@@ -69,7 +88,7 @@ export default function Home() {
           <div className="relative"><div className="absolute -inset-5 rounded-[34px] bg-gradient-to-br from-cyan-400/10 via-transparent to-blue-500/10 blur-xl" />
             <div className="relative rounded-[28px] border border-white/10 bg-[#0c1927]/90 p-5 shadow-[0_30px_90px_rgba(0,0,0,.35)] sm:p-7">
               <div className="mb-6 flex items-start justify-between"><div><p className="text-sm font-medium text-cyan-300">代理激活</p><h2 className="mt-1 text-2xl font-semibold text-white">验证您的卡密</h2></div><div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-500/12 text-blue-300"><KeyRound size={21} /></div></div>
-              <form onSubmit={(event) => { event.preventDefault(); request("/api/token/verify", { token }); }}>
+              <form onSubmit={(event) => { event.preventDefault(); request("/api/token/verify", { token }, token); }}>
                 <label htmlFor="token" className="mb-2 block text-sm font-medium text-slate-300">卡密 Token</label>
                 <input id="token" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" spellCheck="false" placeholder="请输入独角数卡发给您的 Token" className="h-14 w-full rounded-2xl border border-white/10 bg-[#07131f] px-4 text-base text-white outline-none placeholder:text-slate-600 focus:border-cyan-300/55 focus:ring-4 focus:ring-cyan-300/8" />
                 <button disabled={busy} className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 font-semibold text-[#04101a] disabled:opacity-60">{busy ? "正在验证…" : "验证并继续"}<ArrowRight size={18} /></button>
@@ -81,7 +100,7 @@ export default function Home() {
         </section>
       ) : (
         <section className="relative z-10 mx-auto w-full max-w-5xl px-5 pb-16 pt-5 sm:px-8">
-          <button onClick={() => { setInfo(null); setToken(""); setMessage(""); }} className="mb-5 text-sm text-slate-500 hover:text-cyan-300">← 使用其他Token</button>
+          <button onClick={() => { setInfo(null); setToken(""); setMessage(""); }} className="mb-5 text-sm text-slate-500 hover:text-cyan-300">← 返回</button>
           {info.status === "available" ? <Activation info={info} busy={busy} message={message} onActivate={() => request("/api/token/activate", { token })} /> :
             <Dashboard info={info} busy={busy} message={message} tgLink={tgLink} onCopy={copy} onToggle={(enabled) => request("/api/token/toggle", { token, enabled })} />}
         </section>
