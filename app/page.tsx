@@ -82,9 +82,12 @@ export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-[#07111d] text-slate-100">
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
-      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6 sm:px-8">
+      <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-6 sm:px-8">
         <div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-300"><Network size={22} /></div><div><p className="text-[15px] font-semibold text-white">MTProxy 专属代理</p><p className="text-xs text-slate-500">激活与流量管理</p></div></div>
-        <div className="flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/8 px-3 py-1.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />服务正常</div>
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+          <a href="https://52xingkong.xyz" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-full border border-cyan-300/35 bg-cyan-300/12 px-3.5 py-2 text-xs font-semibold text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,.12)] transition hover:border-cyan-200/60 hover:bg-cyan-300/20 hover:text-white sm:text-sm">购买代理或飞机号 <span className="hidden sm:inline">· 前往星空商城</span><ArrowRight size={15} /></a>
+          <div className="flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/8 px-3 py-1.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />服务正常</div>
+        </div>
       </header>
 
       {restoring ? (
