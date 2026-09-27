@@ -35,7 +35,8 @@ function validate(input: ServerInput, existing?: XuiServerRecord) {
   if (!mtproxySecret || mtproxySecret.length > 512 || mtproxySecret.length % 2 !== 0 || !/^[0-9a-f]+$/.test(mtproxySecret)) {
     throw new Error("请输入完整的MTProxy Secret，仅支持偶数长度的十六进制字符（最多512位）");
   }
-  return { alias, baseUrl, username, password, publicIp, targetAddress, targetPort, mtproxySecret, enabled: input.enabled !== false };
+  if (typeof input.enabled !== "boolean") throw new Error("请明确选择是否参与新Token轮询分配");
+  return { alias, baseUrl, username, password, publicIp, targetAddress, targetPort, mtproxySecret, enabled: input.enabled };
 }
 
 export async function GET() {
@@ -64,10 +65,13 @@ export async function PUT(request: NextRequest) {
     const existing = Number.isInteger(input.id) ? getXuiServer(Number(input.id)) : undefined;
     if (!existing) return NextResponse.json({ error: "服务器不存在" }, { status: 404 });
     const value = validate(input, existing);
-    getDatabase().prepare(`UPDATE xui_servers SET alias=?,base_url=?,username=?,password=?,public_ip=?,target_address=?,target_port=?,mtproxy_secret=?,enabled=?,updated_at=? WHERE id=?`)
+    const result = getDatabase().prepare(`UPDATE xui_servers SET alias=?,base_url=?,username=?,password=?,public_ip=?,target_address=?,target_port=?,mtproxy_secret=?,enabled=?,updated_at=? WHERE id=?`)
       .run(value.alias, value.baseUrl, value.username, value.password, value.publicIp, value.targetAddress, value.targetPort, value.mtproxySecret, value.enabled ? 1 : 0, Date.now(), existing.id);
+    if (result.changes !== 1) throw new Error("服务器配置未写入，请重试");
     getDatabase().prepare("UPDATE access_tokens SET server_alias=? WHERE server_id=?").run(value.alias, existing.id);
-    return NextResponse.json(publicServer(getXuiServer(existing.id)!));
+    const saved = getXuiServer(existing.id)!;
+    if (Boolean(saved.enabled) !== value.enabled) throw new Error("服务器启用状态校验失败，请重试");
+    return NextResponse.json(publicServer(saved));
   } catch (error) {
     const message = error instanceof Error ? error.message : "保存失败";
     return NextResponse.json({ error: message.includes("UNIQUE") ? "服务器别名已经存在" : message }, { status: 400 });
