@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin-session";
-import { getDatabase, getXuiServer, listXuiServers, type XuiServerRecord } from "@/lib/db";
+import { getDatabase, getXuiServer, listXuiServers, moveXuiServer, type XuiServerRecord } from "@/lib/db";
 import { testXuiServer } from "@/lib/xui";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ function publicServer(server: XuiServerRecord) {
   return {
     id: server.id, alias: server.alias, baseUrl: server.base_url, username: server.username, hasPassword: Boolean(server.password),
     publicIp: server.public_ip, targetAddress: server.target_address, targetPort: server.target_port,
-    mtproxySecret: server.mtproxy_secret, enabled: Boolean(server.enabled), updatedAt: server.updated_at,
+    mtproxySecret: server.mtproxy_secret, enabled: Boolean(server.enabled), sortOrder: server.sort_order, updatedAt: server.updated_at,
   };
 }
 
@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
   try {
     const value = validate(await request.json() as ServerInput);
     const now = Date.now();
-    const result = getDatabase().prepare(`INSERT INTO xui_servers(alias,base_url,username,password,public_ip,target_address,target_port,mtproxy_secret,enabled,last_assigned_at,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,0,?,?)`).run(value.alias, value.baseUrl, value.username, value.password, value.publicIp, value.targetAddress, value.targetPort, value.mtproxySecret, value.enabled ? 1 : 0, now, now);
+    const result = getDatabase().prepare(`INSERT INTO xui_servers(alias,base_url,username,password,public_ip,target_address,target_port,mtproxy_secret,enabled,sort_order,last_assigned_at,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM xui_servers),0,?,?)`).run(value.alias, value.baseUrl, value.username, value.password, value.publicIp, value.targetAddress, value.targetPort, value.mtproxySecret, value.enabled ? 1 : 0, now, now);
     return NextResponse.json(publicServer(getXuiServer(Number(result.lastInsertRowid))!), { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "保存失败";
@@ -80,9 +80,16 @@ export async function PUT(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: "未登录" }, { status: 401 });
-  const { id } = await request.json() as { id?: number };
+  const { id, direction } = await request.json() as { id?: number; direction?: "up" | "down" };
   const server = Number.isInteger(id) ? getXuiServer(Number(id)) : undefined;
   if (!server) return NextResponse.json({ error: "服务器不存在" }, { status: 404 });
+  if (direction === "up" || direction === "down") {
+    try {
+      return NextResponse.json({ success: true, servers: moveXuiServer(server.id, direction).map(publicServer) });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "调整顺序失败" }, { status: 400 });
+    }
+  }
   try {
     const result = await testXuiServer(server);
     return NextResponse.json({ success: true, inboundCount: result.inboundCount });
